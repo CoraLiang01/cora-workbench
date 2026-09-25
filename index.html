@@ -66,8 +66,10 @@ body {
 .sync-card { width:min(440px,100%); background:#fff; border-radius:22px; padding:22px; box-shadow:var(--shadow-lg); }
 .sync-card p { color:var(--muted); font-size:14px; margin:8px 0 12px; }
 .sync-card input { width:100%; margin-bottom:12px; }
-.edit-hit { cursor:pointer; }
-.edit-hit:hover { color:#3D7EF0; }
+.edit-hit, .ddl-item, .list-item, .check-row, .habit-card, .recipe-card, .paper-card { cursor:pointer; }
+.edit-hit:hover, .ddl-item:hover .text, .list-item:hover .text { color:#3D7EF0; }
+.btn-edit { color:#3D7EF0; background:#E8F1FF; }
+.sync-modal { z-index:200; }
 .edit-lab { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
 #edit-fields input, #edit-fields select, #edit-fields textarea { width:100%; }
 .sidebar-header { padding:28px 18px 12px; text-align:center; }
@@ -848,7 +850,7 @@ function renderDashboard(c){
           ${checkItems.length ? checkItems.map(h=>{
             const done = h._plan ? (todayPlan.find(t=>t.id===h.id)||{}).done : (h.history||[]).includes(todayH);
             const click = h._plan ? `togglePlanTask('${h.id}')` : `toggleHabitToday('${h.id}')`;
-            return `<div class="check-row"><div class="cb ${done?'checked':''}" onclick="${click}"></div><span class="edit-hit" onclick="${h._plan?`editDayPlan('${todayStr()}','${h.id}')`:`editHabit('${h.id}')`}">${esc(h.name)}</span></div>`;
+            return `<div class="check-row" ${rowOpen(h._plan?`editDayPlan('${todayStr()}','${h.id}')`:`editHabit('${h.id}')`)}><div class="cb ${done?'checked':''}" onclick="${click}"></div><span>${esc(h.name)}</span></div>`;
           }).join('') : '<div class="empty">还没有打卡项，去「每日打卡」添加吧</div>'}
         </div>
       </div>
@@ -863,7 +865,7 @@ function renderDashboard(c){
           const days = daysUntil(d.date);
           const cls = days<=3?'urgent':days<=7?'soon':'';
           const label = days<0?'已过期':days===0?'今天':`${days}天`;
-          return `<div class="ddl-item ${cls}"><div><div class="days">${days<0?'!':days===0?'0':days}</div><div class="days-label">${label}</div></div><div style="flex:1" class="edit-hit" onclick="editDDL('${d.id}')"><div style="font-weight:500">${esc(d.title)}</div><div class="meta">${fmtDate(d.date)} ${pLabel(d.priority)}</div></div></div>`;
+          return `<div class="ddl-item ${cls}" ${rowOpen(`editDDL('${d.id}')`)}><div><div class="days">${days<0?'!':days===0?'0':days}</div><div class="days-label">${label}</div></div><div style="flex:1"><div style="font-weight:500">${esc(d.title)}</div><div class="meta">${fmtDate(d.date)} ${pLabel(d.priority)}</div></div>${editBtn(`editDDL('${d.id}')`)}</div>`;
         }).join('') : '<div class="empty">暂无 DDL，去添加一个吧</div>'}
         <div class="ddl-add-form">
           <input id="dash-ddl-title" placeholder="DDL 标题" onkeydown="if(event.key==='Enter')dashAddDDL()" style="flex:1;min-width:120px">
@@ -878,7 +880,7 @@ function renderDashboard(c){
         ${todayPlan.length? `
           <div class="progress"><div class="progress-bar" style="width:${Math.round(doneCount/todayPlan.length*100)}%"></div></div>
           <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${doneCount}/${todayPlan.length} 完成 (${Math.round(doneCount/todayPlan.length*100)}%)</div>
-          ${todayPlan.slice(0,5).map(t=>`<div class="list-item ${t.done?'done':''}"><div class="cb ${t.done?'checked':''}" onclick="togglePlanTask('${t.id}')"></div><div class="text edit-hit" onclick="editDayPlan('${todayStr()}','${t.id}')">${esc(t.title)} ${t.time?`<span class="meta">${t.time}</span>`:''}</div></div>`).join('')}
+          ${todayPlan.slice(0,5).map(t=>`<div class="list-item ${t.done?'done':''}" ${rowOpen(`editDayPlan('${todayStr()}','${t.id}')`)}><div class="cb ${t.done?'checked':''}" onclick="togglePlanTask('${t.id}')"></div><div class="text">${esc(t.title)} ${t.time?`<span class="meta">${t.time}</span>`:''}</div>${editBtn(`editDayPlan('${todayStr()}','${t.id}')`)}</div>`).join('')}
         ` : '<div class="empty">今天还没有计划</div>'}
       </div>
     </div>
@@ -893,7 +895,7 @@ function renderDashboard(c){
         <div class="card-title">今日打卡</div>
         ${habits.length? habits.map(h=>{
           const done=(h.history||[]).includes(todayH);
-          return `<div class="list-item"><div class="cb ${done?'checked':''}" onclick="toggleHabitToday('${h.id}')"></div><div class="text edit-hit" onclick="editHabit('${h.id}')">${esc(h.name)}</div><div class="meta">连续 ${getHabitStreak(h)} 天</div></div>`;
+          return `<div class="list-item" ${rowOpen(`editHabit('${h.id}')`)}><div class="cb ${done?'checked':''}" onclick="toggleHabitToday('${h.id}')"></div><div class="text">${esc(h.name)}</div><div class="meta">连续 ${getHabitStreak(h)} 天</div>${editBtn(`editHabit('${h.id}')`)}</div>`;
         }).join('') : '<div class="empty">还没有打卡项，去添加吧</div>'}
       </div>
       <div class="card">
@@ -1001,12 +1003,13 @@ function renderDDL(c){
         const days=daysUntil(d.date);
         const cls=days<=3?'urgent':days<=7?'soon':'';
         const label=days<0?'已过期':days===0?'今天':`${days}天`;
-        return `<div class="ddl-item ${cls}" style="position:relative">
+        return `<div class="ddl-item ${cls}" style="position:relative" ${rowOpen(`editDDL('${d.id}')`)}>
           <div class="cb ${d.done?'checked':''}" onclick="toggleDDL('${d.id}')"></div>
           <div style="flex:1">
-            <div class="edit-hit" style="font-weight:500;${d.done?'text-decoration:line-through;color:var(--muted)':''}" onclick="editDDL('${d.id}')">${esc(d.title)}</div>
+            <div style="font-weight:500;${d.done?'text-decoration:line-through;color:var(--muted)':''}">${esc(d.title)}</div>
             <div class="meta">${fmtDate(d.date)} ${pLabel(d.priority)} · ${label}</div>
           </div>
+          ${editBtn(`editDDL('${d.id}')`)}
           <button class="btn btn-sm btn-danger" onclick="delDDL('${d.id}')">删除</button>
         </div>`;
       }).join('') : '<div class="empty">还没有 DDL，添加一个吧</div>'}
@@ -1038,6 +1041,8 @@ function delDDL(id){
 }
 
 function priOpts(){ return [{value:'high',label:'高'},{value:'mid',label:'中'},{value:'low',label:'低'}]; }
+function rowOpen(call){ return `onclick="if(!event.target.closest('button,.cb,select,input,textarea,a')){${call}}"`; }
+function editBtn(call){ return `<button type="button" class="btn btn-sm btn-edit" onclick="${call}">编辑</button>`; }
 let editCtx = null;
 function openEdit(title, fields, onSave){
   editCtx = { fields, onSave };
@@ -1844,7 +1849,7 @@ function getWeekStart(s){ const d=new Date(s+'T00:00:00'); const day=d.getDay()=
 function renderMonthPlan(el){
   const now=new Date(); const ym=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const goals=load('monthPlans',{}); const mg=goals[ym]||[]; const done=mg.filter(g=>g.done).length;
-  el.innerHTML=`<div class="card"><div class="card-title">${now.getFullYear()}年${now.getMonth()+1}月 月度目标</div><div class="form-row"><input id="month-goal" placeholder="本月目标（如：完成论文第三章）" onkeydown="if(event.key==='Enter')addMonthGoal('${ym}')" style="min-width:200px"><select id="month-priority" style="max-width:100px"><option value="high">高</option><option value="mid" selected>中</option><option value="low">低</option></select><button class="btn btn-primary" onclick="addMonthGoal('${ym}')">添加</button></div>${mg.length?`<div class="progress"><div class="progress-bar" style="width:${Math.round(done/mg.length*100)}%"></div></div><div style="font-size:12px;color:var(--muted);margin-bottom:8px">${done}/${mg.length} 完成</div>${mg.map(g=>`<div class="list-item ${g.done?'done':''}"><div class="cb ${g.done?'checked':''}" onclick="toggleMonthGoal('${ym}','${g.id}')"></div><div class="text edit-hit" onclick="editMonthGoal('${ym}','${g.id}')">${esc(g.title)} ${pBadge(g.priority)}</div><button class="btn btn-sm btn-danger" onclick="delMonthGoal('${ym}','${g.id}')">删除</button></div>`).join('')}`:'<div class="empty">本月还没有目标，添加一个吧</div>'}</div>`;
+  el.innerHTML=`<div class="card"><div class="card-title">${now.getFullYear()}年${now.getMonth()+1}月 月度目标</div><div class="form-row"><input id="month-goal" placeholder="本月目标（如：完成论文第三章）" onkeydown="if(event.key==='Enter')addMonthGoal('${ym}')" style="min-width:200px"><select id="month-priority" style="max-width:100px"><option value="high">高</option><option value="mid" selected>中</option><option value="low">低</option></select><button class="btn btn-primary" onclick="addMonthGoal('${ym}')">添加</button></div>${mg.length?`<div class="progress"><div class="progress-bar" style="width:${Math.round(done/mg.length*100)}%"></div></div><div style="font-size:12px;color:var(--muted);margin-bottom:8px">${done}/${mg.length} 完成</div>${mg.map(g=>`<div class="list-item ${g.done?'done':''}" ${rowOpen(`editMonthGoal('${ym}','${g.id}')`)}><div class="cb ${g.done?'checked':''}" onclick="toggleMonthGoal('${ym}','${g.id}')"></div><div class="text">${esc(g.title)} ${pBadge(g.priority)}</div>${editBtn(`editMonthGoal('${ym}','${g.id}')`)}<button class="btn btn-sm btn-danger" onclick="delMonthGoal('${ym}','${g.id}')">删除</button></div>`).join('')}`:'<div class="empty">本月还没有目标，添加一个吧</div>'}</div>`;
 }
 function addMonthGoal(ym){ const title=document.getElementById('month-goal').value.trim(); if(!title) return; const goals=load('monthPlans',{}); if(!goals[ym]) goals[ym]=[]; goals[ym].push({id:uid(),title,priority:document.getElementById('month-priority').value,done:false}); save('monthPlans',goals); renderPlanTabContent(); }
 function toggleMonthGoal(ym,id){ const goals=load('monthPlans',{}); const g=(goals[ym]||[]).find(x=>x.id===id); if(g) g.done=!g.done; save('monthPlans',goals); renderPlanTabContent(); }
@@ -1865,7 +1870,7 @@ function renderWeekPlan(el){
   if(!currentWeekStart) currentWeekStart=getWeekStart(todayStr());
   const wp=load('weekPlans',{}); const tasks=wp[currentWeekStart]||[]; const done=tasks.filter(t=>t.done).length;
   const dn=['周一','周二','周三','周四','周五','周六','周日'];
-  el.innerHTML=`<div class="card"><div class="card-title"><span>本周计划 (${fmtDate(currentWeekStart)} ~ ${fmtDate(addDays(currentWeekStart,6))})</span><div class="actions"><button class="btn btn-sm" onclick="changeWeek(-1)">上一周</button><button class="btn btn-sm" onclick="changeWeek(0)">本周</button><button class="btn btn-sm" onclick="changeWeek(1)">下一周</button></div></div><div class="form-row"><input id="week-title" placeholder="本周任务" onkeydown="if(event.key==='Enter')addWeekTask()" style="min-width:200px"><select id="week-day" style="max-width:100px">${dn.map((n,i)=>`<option value="${i}">${n}</option>`).join('')}</select><select id="week-priority" style="max-width:100px"><option value="high">高</option><option value="mid" selected>中</option><option value="low">低</option></select><button class="btn btn-primary" onclick="addWeekTask()">添加</button></div><div style="font-size:12px;color:var(--muted);margin-bottom:8px">选择任务对应星期几，点击"映射到日计划"可直接复制到当天日计划。</div>${tasks.length?`<div class="progress"><div class="progress-bar" style="width:${Math.round(done/tasks.length*100)}%"></div></div><div style="font-size:12px;color:var(--muted);margin-bottom:8px">${done}/${tasks.length} 完成</div>${tasks.map(t=>`<div class="list-item ${t.done?'done':''}"><div class="cb ${t.done?'checked':''}" onclick="toggleWeekTask('${t.id}')"></div><div class="text edit-hit" onclick="editWeekTask('${t.id}')">${esc(t.title)} <span class="badge badge-info">${dn[t.day]||'未分配'}</span> ${pBadge(t.priority)} ${t.mapped?'<span class="badge badge-low">已映射</span>':''}</div><button class="btn btn-sm" onclick="mapWeekToDay('${t.id}')">${t.mapped?'重新映射':'映射到日计划'}</button><button class="btn btn-sm btn-danger" onclick="delWeekTask('${t.id}')">删除</button></div>`).join('')}`:'<div class="empty">本周还没有计划，添加第一个任务吧</div>'}</div>`;
+  el.innerHTML=`<div class="card"><div class="card-title"><span>本周计划 (${fmtDate(currentWeekStart)} ~ ${fmtDate(addDays(currentWeekStart,6))})</span><div class="actions"><button class="btn btn-sm" onclick="changeWeek(-1)">上一周</button><button class="btn btn-sm" onclick="changeWeek(0)">本周</button><button class="btn btn-sm" onclick="changeWeek(1)">下一周</button></div></div><div class="form-row"><input id="week-title" placeholder="本周任务" onkeydown="if(event.key==='Enter')addWeekTask()" style="min-width:200px"><select id="week-day" style="max-width:100px">${dn.map((n,i)=>`<option value="${i}">${n}</option>`).join('')}</select><select id="week-priority" style="max-width:100px"><option value="high">高</option><option value="mid" selected>中</option><option value="low">低</option></select><button class="btn btn-primary" onclick="addWeekTask()">添加</button></div><div style="font-size:12px;color:var(--muted);margin-bottom:8px">选择任务对应星期几，点击"映射到日计划"可直接复制到当天日计划。</div>${tasks.length?`<div class="progress"><div class="progress-bar" style="width:${Math.round(done/tasks.length*100)}%"></div></div><div style="font-size:12px;color:var(--muted);margin-bottom:8px">${done}/${tasks.length} 完成</div>${tasks.map(t=>`<div class="list-item ${t.done?'done':''}" ${rowOpen(`editWeekTask('${t.id}')`)}><div class="cb ${t.done?'checked':''}" onclick="toggleWeekTask('${t.id}')"></div><div class="text">${esc(t.title)} <span class="badge badge-info">${dn[t.day]||'未分配'}</span> ${pBadge(t.priority)} ${t.mapped?'<span class="badge badge-low">已映射</span>':''}</div>${editBtn(`editWeekTask('${t.id}')`)}<button class="btn btn-sm" onclick="mapWeekToDay('${t.id}')">${t.mapped?'重新映射':'映射到日计划'}</button><button class="btn btn-sm btn-danger" onclick="delWeekTask('${t.id}')">删除</button></div>`).join('')}`:'<div class="empty">本周还没有计划，添加第一个任务吧</div>'}</div>`;
 }
 function changeWeek(dir){ if(dir===0) currentWeekStart=getWeekStart(todayStr()); else currentWeekStart=addDays(currentWeekStart,dir*7); renderPlanTabContent(); }
 function addWeekTask(){ const title=document.getElementById('week-title').value.trim(); if(!title) return; const day=parseInt(document.getElementById('week-day').value); const priority=document.getElementById('week-priority').value; const wp=load('weekPlans',{}); if(!wp[currentWeekStart]) wp[currentWeekStart]=[]; wp[currentWeekStart].push({id:uid(),title,day,priority,done:false,mapped:false}); save('weekPlans',wp); renderPlanTabContent(); }
@@ -1912,7 +1917,7 @@ function renderDayPlan(el){
       ${tasks.length?`
         <div class="progress"><div class="progress-bar" style="width:${Math.round(done/tasks.length*100)}%"></div></div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${done}/${tasks.length} 完成 (${Math.round(done/tasks.length*100)}%)</div>
-        ${tasks.map(t=>`<div class="list-item ${t.done?'done':''}"><div class="cb ${t.done?'checked':''}" onclick="togglePlan('${t.id}')"></div><div class="text edit-hit" onclick="editDayPlan('${currentPlanDate}','${t.id}')">${esc(t.title)} ${t.time?`<span class="meta">· ${t.time}</span>`:''} ${pBadge(t.priority)} ${t.fromWeek?'<span class="badge badge-info">来自周计划</span>':''}</div><button class="btn btn-sm btn-danger" onclick="delPlan('${t.id}')">删除</button></div>`).join('')}
+        ${tasks.map(t=>`<div class="list-item ${t.done?'done':''}" ${rowOpen(`editDayPlan('${currentPlanDate}','${t.id}')`)}><div class="cb ${t.done?'checked':''}" onclick="togglePlan('${t.id}')"></div><div class="text">${esc(t.title)} ${t.time?`<span class="meta">· ${t.time}</span>`:''} ${pBadge(t.priority)} ${t.fromWeek?'<span class="badge badge-info">来自周计划</span>':''}</div>${editBtn(`editDayPlan('${currentPlanDate}','${t.id}')`)}<button class="btn btn-sm btn-danger" onclick="delPlan('${t.id}')">删除</button></div>`).join('')}
       `:'<div class="empty">这一天还没有计划，添加第一个任务吧</div>'}
     </div>
   `;
@@ -1958,7 +1963,7 @@ function renderHabit(c){
           const isToday=d===t;
           return `<div class="habit-dot ${isDone?'done':''} ${isToday?'today':''}" title="${d}">${isDone?'\\u2713':parseInt(d.split('-')[2])}</div>`;
         }).join('');
-        return `<div class="habit-card"><div class="top"><span class="name edit-hit" onclick="editHabit('${h.id}')">${esc(h.name)}</span><span class="streak">${streak} 天连击</span></div><div class="habit-dots">${last7}</div><div style="display:flex;gap:8px"><button class="btn btn-sm ${done?'':'btn-primary'}" onclick="toggleHabit('${h.id}')">${done?'今日已打卡':'今日打卡'}</button><button class="btn btn-sm btn-danger" onclick="delHabit('${h.id}')">删除</button></div></div>`;
+        return `<div class="habit-card" ${rowOpen(`editHabit('${h.id}')`)}><div class="top"><span class="name">${esc(h.name)}</span><span class="streak">${streak} 天连击</span></div><div class="habit-dots">${last7}</div><div style="display:flex;gap:8px"><button class="btn btn-sm ${done?'':'btn-primary'}" onclick="toggleHabit('${h.id}')">${done?'今日已打卡':'今日打卡'}</button>${editBtn(`editHabit('${h.id}')`)}<button class="btn btn-sm btn-danger" onclick="delHabit('${h.id}')">删除</button></div></div>`;
       }).join('') : '<div class="empty" style="grid-column:1/-1">还没有打卡项，添加你的第一个习惯吧</div>'}
     </div>
   `;
@@ -2022,7 +2027,7 @@ function renderEnglish(c){
     </div>
     <div class="card">
       <div class="card-title">学习记录</div>
-      ${log.length? log.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`<div class="list-item"><span class="badge badge-info">${e.type}</span><div class="text edit-hit" onclick="editEnglish('${e.id}')">${esc(e.content)}</div><div class="meta">${fmtDate(e.date)} · ${e.duration}min</div><button class="btn btn-sm btn-danger" onclick="delEnglish('${e.id}')">删除</button></div>`).join('') : '<div class="empty">还没有学习记录</div>'}
+      ${log.length? log.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`<div class="list-item" ${rowOpen(`editEnglish('${e.id}')`)}><span class="badge badge-info">${e.type}</span><div class="text">${esc(e.content)}</div><div class="meta">${fmtDate(e.date)} · ${e.duration}min</div>${editBtn(`editEnglish('${e.id}')`)}<button class="btn btn-sm btn-danger" onclick="delEnglish('${e.id}')">删除</button></div>`).join('') : '<div class="empty">还没有学习记录</div>'}
     </div>
   `;
 }
@@ -2181,9 +2186,10 @@ function renderRecipeList(){
   const recipes=load('recipes',[]);
   el.innerHTML=recipes.length? recipes.map(r=>`
     <div class="recipe-card">
-      <div class="rname edit-hit" onclick="editRecipe('${r.id}')">${esc(r.name)}</div>
+      <div class="rname" ${rowOpen(`editRecipe('${r.id}')`)}>${esc(r.name)}</div>
       ${r.link?`<a class="rlink" href="${esc(r.link)}" target="_blank">查看原帖</a>`:''}
       <button class="xhs-btn" onclick="searchXHSKeyword('${esc(r.name)}')">再搜</button>
+      ${editBtn(`editRecipe('${r.id}')`)}
       <button class="btn btn-sm btn-danger" onclick="delRecipe('${r.id}')">删除</button>
     </div>
   `).join('') : '<div class="empty" style="padding:16px">还没有收藏的食谱，去小红书搜一搜吧</div>';
@@ -2266,11 +2272,12 @@ function renderPaperList(papers,filter){
   const sBadge={'未读':'badge-low','在读':'badge-mid','已读':'badge-info'};
   list.innerHTML=filtered.length? filtered.map(p=>`
     <div class="paper-card">
-      <div class="title edit-hit" onclick="editPaper('${p.id}')">${esc(p.title)}</div>
+      <div class="title" ${rowOpen(`editPaper('${p.id}')`)}>${esc(p.title)}</div>
       <div class="info">${esc(p.authors||'')} ${p.publishedDate?'· '+fmtDate(p.publishedDate):''} ${p.tags&&p.tags.length?'· '+p.tags.map(t=>'#'+esc(t)).join(' '):''}</div>
       <div style="display:flex;gap:8px;align-items:center">
         <span class="badge ${sBadge[p.status]||'badge-info'}">${p.status}</span>
         <select onchange="updatePaperStatus('${p.id}',this.value)" style="font-size:12px;padding:2px 8px"><option ${p.status==='未读'?'selected':''}>未读</option><option ${p.status==='在读'?'selected':''}>在读</option><option ${p.status==='已读'?'selected':''}>已读</option></select>
+        ${editBtn(`editPaper('${p.id}')`)}
         <button class="btn btn-sm" onclick="editPaperNote('${p.id}')">笔记</button>
         <button class="btn btn-sm btn-danger" onclick="delPaper('${p.id}')">删除</button>
       </div>
@@ -2422,7 +2429,7 @@ function renderExpense(c){
     </div>
     <div class="card">
       <div class="card-title">支出明细</div>
-      ${expenses.length? expenses.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30).map(e=>`<div class="list-item"><span class="badge badge-info">${e.category}</span><div class="text edit-hit" onclick="editExpense('${e.id}')">${esc(e.note||'未备注')}</div><div class="meta">¥${e.amount} · ${fmtDate(e.date)}</div><button class="btn btn-sm btn-danger" onclick="delExpense('${e.id}')">删除</button></div>`).join('') : '<div class="empty">还没有记账记录</div>'}
+      ${expenses.length? expenses.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30).map(e=>`<div class="list-item" ${rowOpen(`editExpense('${e.id}')`)}><span class="badge badge-info">${e.category}</span><div class="text">${esc(e.note||'未备注')}</div><div class="meta">¥${e.amount} · ${fmtDate(e.date)}</div>${editBtn(`editExpense('${e.id}')`)}<button class="btn btn-sm btn-danger" onclick="delExpense('${e.id}')">删除</button></div>`).join('') : '<div class="empty">还没有记账记录</div>'}
     </div>
   `;
 
@@ -2479,7 +2486,7 @@ function renderDiary(c){
     </div>
     <div class="card">
       <div class="card-title">日记历史</div>
-      ${diary.length? diary.sort((a,b)=>b.date.localeCompare(a.date)).map(d=>`<div class="list-item" style="align-items:flex-start"><div style="font-size:20px">${d.mood||''}</div><div class="text edit-hit" onclick="editDiary('${d.id}')"><div style="font-weight:500">${fmtDate(d.date)}</div><div style="font-size:13px;color:var(--muted);margin-top:2px;white-space:pre-wrap">${esc(d.content)}</div></div><button class="btn btn-sm btn-danger" onclick="delDiary('${d.id}')">删除</button></div>`).join('') : '<div class="empty">还没有写过日记</div>'}
+      ${diary.length? diary.sort((a,b)=>b.date.localeCompare(a.date)).map(d=>`<div class="list-item" style="align-items:flex-start" ${rowOpen(`editDiary('${d.id}')`)}><div style="font-size:20px">${d.mood||''}</div><div class="text"><div style="font-weight:500">${fmtDate(d.date)}</div><div style="font-size:13px;color:var(--muted);margin-top:2px;white-space:pre-wrap">${esc(d.content)}</div></div>${editBtn(`editDiary('${d.id}')`)}<button class="btn btn-sm btn-danger" onclick="delDiary('${d.id}')">删除</button></div>`).join('') : '<div class="empty">还没有写过日记</div>'}
     </div>
   `;
   if(today) window._selectedMood=today.mood; else window._selectedMood=null;

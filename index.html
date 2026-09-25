@@ -58,7 +58,14 @@ body {
   border-right:1px solid rgba(255,255,255,.75);
   box-shadow:10px 0 36px rgba(90,130,175,.10);
 }
-.sidebar-foot { margin-top:auto; text-align:center; padding:18px 0 22px; font-size:22px; }
+.sidebar-foot { margin-top:auto; text-align:center; padding:14px 16px 18px; font-size:22px; }
+.sync-btn { display:inline-flex; align-items:center; justify-content:center; width:100%; margin-bottom:8px; padding:8px 12px; border:none; border-radius:999px; cursor:pointer; font-family:var(--font-kai); font-size:14px; font-weight:650; color:#3D7EF0; background:rgba(255,255,255,.8); box-shadow:0 6px 14px rgba(90,130,175,.12); }
+.sync-status { font-size:12px; color:var(--muted); margin-bottom:8px; line-height:1.4; }
+.sync-modal { position:fixed; inset:0; z-index:90; background:rgba(44,58,79,.38); display:flex; align-items:center; justify-content:center; padding:24px; }
+.sync-modal[hidden] { display:none; }
+.sync-card { width:min(440px,100%); background:#fff; border-radius:22px; padding:22px; box-shadow:var(--shadow-lg); }
+.sync-card p { color:var(--muted); font-size:14px; margin:8px 0 12px; }
+.sync-card input { width:100%; margin-bottom:12px; }
 .sidebar-header { padding:28px 18px 12px; text-align:center; }
 .brand { display:flex; flex-direction:column; align-items:center; gap:8px; }
 .brand-seal {
@@ -439,7 +446,11 @@ textarea { resize:vertical; min-height:60px; }
       </div>
     </div>
     <div id="nav-list" data-page-node-id="Ux7eKHBDBcFQXtCO1eq4Ll"></div>
-    <div class="sidebar-foot">🌷</div>
+    <div class="sidebar-foot">
+      <button type="button" class="sync-btn" onclick="openSync()">云端保存</button>
+      <div id="sync-status" class="sync-status">未连接</div>
+      <div>🌷</div>
+    </div>
   </nav>
   <main id="main" data-page-node-id="aJzBcyvkcy6piHM6zQ33Ah">
     <div class="topbar" data-page-node-id="fjEVeXaE6xpIPy3cbntXb7">
@@ -450,12 +461,23 @@ textarea { resize:vertical; min-height:60px; }
       <div class="card" style="max-width:520px;margin:40px auto">
         <div class="card-title">打开方式</div>
         <p>工作台需要在浏览器里运行。请不要只在编辑器里看这份 HTML 源代码。</p>
-        <p style="margin-top:10px;color:var(--muted)">用 Safari 或 Chrome 打开本文件。本机或同一 WiFi 访问：</p>
-        <p style="margin-top:8px"><a href="http://kuoliang.local:8765/index.html" style="color:var(--primary)">http://kuoliang.local:8765/index.html</a></p>
-        <p style="margin-top:6px"><a href="http://127.0.0.1:8765/index.html" style="color:var(--primary)">http://127.0.0.1:8765/index.html</a></p>
+        <p style="margin-top:10px;color:var(--muted)">固定地址：</p>
+        <p style="margin-top:8px"><a href="https://coraliang01.github.io/cora-workbench/" style="color:var(--primary)">https://coraliang01.github.io/cora-workbench/</a></p>
       </div>
     </div>
   </main>
+</div>
+<div id="sync-modal" class="sync-modal" hidden>
+  <div class="sync-card">
+    <div class="card-title">把记录存到你的 GitHub</div>
+    <p>这个 token 能读写你的私人仓库，只填在自己的浏览器里。生成后勾选 <b>repo</b>。</p>
+    <p><a id="sync-token-link" href="https://github.com/settings/tokens/new?scopes=repo&description=Cora-workbench" target="_blank" rel="noopener" style="color:var(--primary)">生成一个 repo 权限的 token</a>，粘贴到下面。</p>
+    <input id="sync-token" type="password" placeholder="github_pat_ 或 ghp_ 开头的 token" autocomplete="off">
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="closeSync()">取消</button>
+      <button type="button" class="btn btn-primary" onclick="connectSync()">连接并保存</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -526,7 +548,162 @@ function projectIco(p, size){
 }
 
 function load(k, def){ try{ const v = JSON.parse(localStorage.getItem(P+k)); return v ?? def ?? []; }catch{ return def ?? []; } }
-function save(k, v){ try{ localStorage.setItem(P+k, JSON.stringify(v)); return true; }catch(e){ alert('存储空间不足！请删除一些文件或数据后重试。'); return false; } }
+let cloudQuiet = false;
+let cloudSha = '';
+let cloudTimer = null;
+const DATA_REPO = 'CoraLiang01/cora-workbench-data';
+function ghToken(){ return localStorage.getItem(P+'gh_token') || ''; }
+function save(k, v){
+  try{
+    localStorage.setItem(P+k, JSON.stringify(v));
+    if(!cloudQuiet && k!=='__syncmeta' && k!=='gh_token'){
+      const meta = load('__syncmeta', {});
+      const next = (meta && typeof meta==='object' && !Array.isArray(meta)) ? meta : {};
+      next[k] = Date.now();
+      cloudQuiet = true;
+      localStorage.setItem(P+'__syncmeta', JSON.stringify(next));
+      cloudQuiet = false;
+      scheduleCloudPush();
+    }
+    return true;
+  }catch(e){ alert('存储空间不足！请删除一些文件或数据后重试。'); return false; }
+}
+function setSyncStatus(text){ const el=document.getElementById('sync-status'); if(el) el.textContent=text; }
+function refreshSyncLabel(){ setSyncStatus(ghToken() ? '已连接云端' : '未连接'); }
+function openSync(){ const m=document.getElementById('sync-modal'); if(m) m.hidden=false; }
+function closeSync(){ const m=document.getElementById('sync-modal'); if(m) m.hidden=true; }
+function strToB64(s){
+  const bytes = new TextEncoder().encode(s);
+  let bin='';
+  bytes.forEach(b=>{ bin += String.fromCharCode(b); });
+  return btoa(bin);
+}
+function b64ToStr(b64){
+  const bin = atob(String(b64).replace(/\n/g,''));
+  const bytes = Uint8Array.from(bin, c=>c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+function collectCloud(){
+  const meta = load('__syncmeta', {});
+  const keys = {};
+  for(let i=0;i<localStorage.length;i++){
+    const full = localStorage.key(i);
+    if(!full || !full.startsWith(P)) continue;
+    const k = full.slice(P.length);
+    if(k==='gh_token' || k==='__syncmeta') continue;
+    keys[k] = { t:(meta && meta[k]) || 0, v: JSON.parse(localStorage.getItem(full)) };
+  }
+  return { v:1, keys };
+}
+function applyCloud(doc){
+  cloudQuiet = true;
+  const meta = {};
+  Object.entries((doc && doc.keys) || {}).forEach(([k,item])=>{
+    localStorage.setItem(P+k, JSON.stringify(item.v));
+    meta[k] = item.t || 0;
+  });
+  localStorage.setItem(P+'__syncmeta', JSON.stringify(meta));
+  cloudQuiet = false;
+}
+async function ghContents(method, body){
+  const token = ghToken();
+  if(!token) return null;
+  const res = await fetch('https://api.github.com/repos/'+DATA_REPO+'/contents/data.json', {
+    method,
+    headers:{
+      Authorization:'Bearer '+token,
+      Accept:'application/vnd.github+json',
+      'Content-Type':'application/json',
+      'X-GitHub-Api-Version':'2022-11-28'
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if(res.status===404) return { missing:true };
+  const data = await res.json().catch(()=>null);
+  if(!res.ok){
+    const msg = (data && data.message) || ('同步失败 '+res.status);
+    throw new Error(msg);
+  }
+  return data;
+}
+async function pullMerge(){
+  if(!ghToken()) return;
+  setSyncStatus('正在同步…');
+  const remoteFile = await ghContents('GET');
+  let remote = null;
+  if(remoteFile && !remoteFile.missing){
+    cloudSha = remoteFile.sha || '';
+    remote = JSON.parse(b64ToStr(remoteFile.content));
+  }
+  if(!remote || !remote.keys){
+    await pushCloud();
+    refreshSyncLabel();
+    return;
+  }
+  const local = collectCloud();
+  const names = new Set([...Object.keys(remote.keys), ...Object.keys(local.keys)]);
+  const merged = { v:1, keys:{} };
+  let localNewer = false;
+  names.forEach(k=>{
+    const r = remote.keys[k];
+    const l = local.keys[k];
+    if(r && l){
+      if((l.t||0) > (r.t||0)){ merged.keys[k]=l; localNewer=true; }
+      else if((l.t||0) === (r.t||0) && (l.t||0)===0){ merged.keys[k]=l; localNewer=true; }
+      else merged.keys[k]=r;
+    } else if(l){
+      merged.keys[k]=l; localNewer=true;
+    } else merged.keys[k]=r;
+  });
+  applyCloud(merged);
+  if(localNewer || remoteFile.missing) await pushCloud();
+  else refreshSyncLabel();
+}
+function scheduleCloudPush(){
+  if(!ghToken()) return;
+  clearTimeout(cloudTimer);
+  cloudTimer = setTimeout(()=>{ pushCloud().catch(e=>setSyncStatus(e.message||'同步失败')); }, 800);
+}
+async function pushCloud(){
+  if(!ghToken()) return;
+  const doc = collectCloud();
+  const now = Date.now();
+  const meta = load('__syncmeta', {});
+  const next = (meta && typeof meta==='object' && !Array.isArray(meta)) ? meta : {};
+  Object.entries(doc.keys).forEach(([k,item])=>{
+    if(!item.t){ item.t = now; next[k] = now; }
+  });
+  cloudQuiet = true;
+  localStorage.setItem(P+'__syncmeta', JSON.stringify(next));
+  cloudQuiet = false;
+  const payload = JSON.stringify(doc);
+  if(payload.length > 900000){ setSyncStatus('内容太大，暂未上传'); return; }
+  setSyncStatus('正在保存…');
+  if(!cloudSha){
+    const cur = await ghContents('GET');
+    if(cur && !cur.missing) cloudSha = cur.sha || '';
+  }
+  const body = { message:'sync workbench', content: strToB64(payload) };
+  if(cloudSha) body.sha = cloudSha;
+  const saved = await ghContents('PUT', body);
+  cloudSha = (saved && saved.content && saved.content.sha) || cloudSha;
+  setSyncStatus('已保存到云端');
+}
+async function connectSync(){
+  const input = document.getElementById('sync-token');
+  const token = (input && input.value || '').trim();
+  if(!token){ setSyncStatus('先粘贴 token'); return; }
+  localStorage.setItem(P+'gh_token', token);
+  try{
+    await pullMerge();
+    closeSync();
+    switchView(currentView);
+  }catch(e){
+    localStorage.removeItem(P+'gh_token');
+    cloudSha = '';
+    setSyncStatus(e.message || '连接失败');
+  }
+}
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 function todayStr(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function dateStr(d){ if(!d) return ''; const dt = typeof d==='string'? new Date(d) : d; return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; }
@@ -551,6 +728,7 @@ function init(){
   initDefaultProjects();
   ensureKatex();
   document.getElementById('sidebar-date').textContent = '慢慢来，比较快';
+  refreshSyncLabel();
   switchView('dashboard');
 }
 
@@ -1106,7 +1284,9 @@ function initDefaultProjects(){
       {id:uid(), title:'跳舞', category:'Interest', icon:'☆', content:'', createdAt:todayStr(), updatedAt:todayStr(), pages:[]},
       {id:uid(), title:'游泳', category:'Interest', icon:'☆', content:'', createdAt:todayStr(), updatedAt:todayStr(), pages:[]}
     ];
-    save('projects', defaults);
+    cloudQuiet = true;
+    localStorage.setItem(P+'projects', JSON.stringify(defaults));
+    cloudQuiet = false;
   }
   const all = load('projects', []);
   let changed = false;
@@ -2197,11 +2377,20 @@ function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
 function pLabel(p){ return p==='high'?'高优先':p==='mid'?'中优先':'低优先'; }
 function pBadge(p){ return `<span class="badge ${p==='high'?'badge-high':p==='mid'?'badge-mid':'badge-low'}">${pLabel(p)}</span>`; }
 
-try { init(); } catch (e) {
-  console.error(e);
-  var c = document.getElementById('content');
-  if (c) c.innerHTML = '<div class="card"><div class="card-title">载入失败</div><p>'+esc(e && e.message)+'</p></div>';
+async function boot(){
+  try{
+    if(ghToken()) await pullMerge();
+  }catch(e){
+    console.error(e);
+    setSyncStatus(e.message || '同步失败');
+  }
+  try { init(); } catch (e) {
+    console.error(e);
+    var c = document.getElementById('content');
+    if (c) c.innerHTML = '<div class="card"><div class="card-title">载入失败</div><p>'+esc(e && e.message)+'</p></div>';
+  }
 }
+boot();
 </script>
 </body>
 </html>

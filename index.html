@@ -794,7 +794,6 @@ function tickHelloClock(){
 function renderDashboard(c){
   const ddls = load('ddls',[]).filter(d=>!d.done).sort((a,b)=>daysUntil(a.date)-daysUntil(b.date));
   const plans = load('plans',{});
-  const projects = load('projects',[]);
   const todayPlan = plans[todayStr()] || [];
   const doneCount = todayPlan.filter(t=>t.done).length;
   const habits = load('habits',[]);
@@ -802,7 +801,6 @@ function renderDashboard(c){
   const habitDone = habits.filter(h=>(h.history||[]).includes(todayH)).length;
   const diary = load('diary',[]);
   const todayDiary = diary.find(d=>d.date===todayStr());
-  const enToday = load('english',[]).filter(x=>x.date===todayStr()).length;
   const pct = habits.length ? Math.round(habitDone/habits.length*100) : (todayPlan.length? Math.round(doneCount/todayPlan.length*100) : 0);
   const now = new Date();
   const dateLine = now.toLocaleDateString('zh-CN',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
@@ -844,22 +842,6 @@ function renderDashboard(c){
 
     <div class="quote-box">💌 ${quote.zh}<div class="quote-en">${quote.en}</div></div>
 
-    <div class="card">
-      <div class="card-title">📋 全部功能概览</div>
-      <div class="feat-grid">
-        ${NAV.filter(n=>n.id!=='dashboard').map(n=>{
-          let sub = '进入';
-          if(n.id==='english') sub = `今日 ${enToday} 条`;
-          if(n.id==='habit') sub = `今日 ${habitDone} 项`;
-          if(n.id==='plan') sub = `今日 ${doneCount}/${todayPlan.length}`;
-          if(n.id==='ddl') sub = `${ddls.length} 待办`;
-          if(n.id==='diary') sub = todayDiary ? '已记录' : '今日 0 条';
-          if(n.id==='project') sub = `${projects.length} 个`;
-          return `<div class="feat" onclick="switchView('${n.id}')"><div class="emo">${n.icon}</div><div class="name">${n.label}</div><div class="sub">${sub}</div></div>`;
-        }).join('')}
-      </div>
-    </div>
-
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div class="card">
         <div class="card-title">DDL 倒计时 ${ddls.length?`<span class="badge badge-info">${ddls.length}</span>`:''} <div class="actions"><button class="btn btn-sm" onclick="switchView('ddl')">管理全部</button></div></div>
@@ -885,19 +867,6 @@ function renderDashboard(c){
           ${todayPlan.slice(0,5).map(t=>`<div class="list-item ${t.done?'done':''}"><div class="cb ${t.done?'checked':''}" onclick="togglePlanTask('${t.id}')"></div><div class="text">${esc(t.title)} ${t.time?`<span class="meta">${t.time}</span>`:''}</div></div>`).join('')}
         ` : '<div class="empty">今天还没有计划</div>'}
       </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">项目与兴趣 <div class="actions"><button class="btn btn-sm" onclick="switchView('project')">管理全部</button></div></div>
-      ${['Research','Personal','Learning','Interest'].map(cat=>{
-        const catLabels={'Research':'研究项目','Personal':'个人事务','Learning':'学习成长','Interest':'兴趣爱好'};
-        const items=projects.filter(p=>p.category===cat).slice(0,4);
-        if(!items.length) return '';
-        return `<div class="proj-cat-label">${catLabels[cat]}</div><div class="proj-card-grid">${items.map(p=>{
-          const nc=countPages(p.pages||[]);
-          return `<div class="proj-card" onclick="openProject('${p.id}')"><div class="pc-icon">${projectIco(p,20)}</div><div class="pc-title">${esc(p.title)}</div><div class="pc-meta">${nc?nc+' 个页面':'点击进入'}</div></div>`;
-        }).join('')}</div>`;
-      }).join('')}
     </div>
 
     <div class="card">

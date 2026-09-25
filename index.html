@@ -66,6 +66,10 @@ body {
 .sync-card { width:min(440px,100%); background:#fff; border-radius:22px; padding:22px; box-shadow:var(--shadow-lg); }
 .sync-card p { color:var(--muted); font-size:14px; margin:8px 0 12px; }
 .sync-card input { width:100%; margin-bottom:12px; }
+.edit-hit { cursor:pointer; }
+.edit-hit:hover { color:#3D7EF0; }
+.edit-lab { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+#edit-fields input, #edit-fields select, #edit-fields textarea { width:100%; }
 .sidebar-header { padding:28px 18px 12px; text-align:center; }
 .brand { display:flex; flex-direction:column; align-items:center; gap:8px; }
 .brand-seal {
@@ -479,6 +483,16 @@ textarea { resize:vertical; min-height:60px; }
     </div>
   </div>
 </div>
+<div id="edit-modal" class="sync-modal" hidden>
+  <div class="sync-card">
+    <div class="card-title" id="edit-title">编辑</div>
+    <div id="edit-fields"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button type="button" class="btn" onclick="closeEdit()">取消</button>
+      <button type="button" class="btn btn-primary" onclick="saveEdit()">保存</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const P = 'ww_';
@@ -834,7 +848,7 @@ function renderDashboard(c){
           ${checkItems.length ? checkItems.map(h=>{
             const done = h._plan ? (todayPlan.find(t=>t.id===h.id)||{}).done : (h.history||[]).includes(todayH);
             const click = h._plan ? `togglePlanTask('${h.id}')` : `toggleHabitToday('${h.id}')`;
-            return `<div class="check-row"><div class="cb ${done?'checked':''}" onclick="${click}"></div><span>${esc(h.name)}</span></div>`;
+            return `<div class="check-row"><div class="cb ${done?'checked':''}" onclick="${click}"></div><span class="edit-hit" onclick="${h._plan?`editDayPlan('${todayStr()}','${h.id}')`:`editHabit('${h.id}')`}">${esc(h.name)}</span></div>`;
           }).join('') : '<div class="empty">还没有打卡项，去「每日打卡」添加吧</div>'}
         </div>
       </div>
@@ -849,7 +863,7 @@ function renderDashboard(c){
           const days = daysUntil(d.date);
           const cls = days<=3?'urgent':days<=7?'soon':'';
           const label = days<0?'已过期':days===0?'今天':`${days}天`;
-          return `<div class="ddl-item ${cls}"><div><div class="days">${days<0?'!':days===0?'0':days}</div><div class="days-label">${label}</div></div><div style="flex:1"><div style="font-weight:500">${esc(d.title)}</div><div class="meta">${fmtDate(d.date)} ${pLabel(d.priority)}</div></div></div>`;
+          return `<div class="ddl-item ${cls}"><div><div class="days">${days<0?'!':days===0?'0':days}</div><div class="days-label">${label}</div></div><div style="flex:1" class="edit-hit" onclick="editDDL('${d.id}')"><div style="font-weight:500">${esc(d.title)}</div><div class="meta">${fmtDate(d.date)} ${pLabel(d.priority)}</div></div></div>`;
         }).join('') : '<div class="empty">暂无 DDL，去添加一个吧</div>'}
         <div class="ddl-add-form">
           <input id="dash-ddl-title" placeholder="DDL 标题" onkeydown="if(event.key==='Enter')dashAddDDL()" style="flex:1;min-width:120px">
@@ -864,7 +878,7 @@ function renderDashboard(c){
         ${todayPlan.length? `
           <div class="progress"><div class="progress-bar" style="width:${Math.round(doneCount/todayPlan.length*100)}%"></div></div>
           <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${doneCount}/${todayPlan.length} 完成 (${Math.round(doneCount/todayPlan.length*100)}%)</div>
-          ${todayPlan.slice(0,5).map(t=>`<div class="list-item ${t.done?'done':''}"><div class="cb ${t.done?'checked':''}" onclick="togglePlanTask('${t.id}')"></div><div class="text">${esc(t.title)} ${t.time?`<span class="meta">${t.time}</span>`:''}</div></div>`).join('')}
+          ${todayPlan.slice(0,5).map(t=>`<div class="list-item ${t.done?'done':''}"><div class="cb ${t.done?'checked':''}" onclick="togglePlanTask('${t.id}')"></div><div class="text edit-hit" onclick="editDayPlan('${todayStr()}','${t.id}')">${esc(t.title)} ${t.time?`<span class="meta">${t.time}</span>`:''}</div></div>`).join('')}
         ` : '<div class="empty">今天还没有计划</div>'}
       </div>
     </div>
@@ -879,7 +893,7 @@ function renderDashboard(c){
         <div class="card-title">今日打卡</div>
         ${habits.length? habits.map(h=>{
           const done=(h.history||[]).includes(todayH);
-          return `<div class="list-item"><div class="cb ${done?'checked':''}" onclick="toggleHabitToday('${h.id}')"></div><div class="text">${esc(h.name)}</div><div class="meta">连续 ${getHabitStreak(h)} 天</div></div>`;
+          return `<div class="list-item"><div class="cb ${done?'checked':''}" onclick="toggleHabitToday('${h.id}')"></div><div class="text edit-hit" onclick="editHabit('${h.id}')">${esc(h.name)}</div><div class="meta">连续 ${getHabitStreak(h)} 天</div></div>`;
         }).join('') : '<div class="empty">还没有打卡项，去添加吧</div>'}
       </div>
       <div class="card">
@@ -990,7 +1004,7 @@ function renderDDL(c){
         return `<div class="ddl-item ${cls}" style="position:relative">
           <div class="cb ${d.done?'checked':''}" onclick="toggleDDL('${d.id}')"></div>
           <div style="flex:1">
-            <div style="font-weight:500;${d.done?'text-decoration:line-through;color:var(--muted)':''}">${esc(d.title)}</div>
+            <div class="edit-hit" style="font-weight:500;${d.done?'text-decoration:line-through;color:var(--muted)':''}" onclick="editDDL('${d.id}')">${esc(d.title)}</div>
             <div class="meta">${fmtDate(d.date)} ${pLabel(d.priority)} · ${label}</div>
           </div>
           <button class="btn btn-sm btn-danger" onclick="delDDL('${d.id}')">删除</button>
@@ -1021,6 +1035,59 @@ function delDDL(id){
   const ddls=load('ddls',[]).filter(x=>x.id!==id);
   save('ddls',ddls);
   renderDDL(document.getElementById('content'));
+}
+
+function priOpts(){ return [{value:'high',label:'高'},{value:'mid',label:'中'},{value:'low',label:'低'}]; }
+let editCtx = null;
+function openEdit(title, fields, onSave){
+  editCtx = { fields, onSave };
+  document.getElementById('edit-title').textContent = title;
+  document.getElementById('edit-fields').innerHTML = fields.map(f=>{
+    if(f.type==='select'){
+      return `<label class="edit-lab">${esc(f.label)}</label><select id="ef-${f.key}">${(f.options||[]).map(o=>`<option value="${esc(o.value)}" ${String(o.value)===String(f.value)?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`;
+    }
+    if(f.type==='textarea'){
+      return `<label class="edit-lab">${esc(f.label)}</label><textarea id="ef-${f.key}" style="min-height:120px">${esc(f.value||'')}</textarea>`;
+    }
+    return `<label class="edit-lab">${esc(f.label)}</label><input id="ef-${f.key}" type="${f.type||'text'}" value="${esc(f.value||'')}">`;
+  }).join('');
+  document.getElementById('edit-modal').hidden = false;
+}
+function closeEdit(){ const m=document.getElementById('edit-modal'); if(m) m.hidden=true; editCtx=null; }
+function saveEdit(){
+  if(!editCtx) return;
+  const values = {};
+  editCtx.fields.forEach(f=>{
+    const el=document.getElementById('ef-'+f.key);
+    values[f.key]=el?el.value:'';
+  });
+  const done = editCtx.onSave;
+  closeEdit();
+  done(values);
+}
+function refreshAfterEdit(){
+  const c=document.getElementById('content');
+  if(currentView==='dashboard') renderDashboard(c);
+  else if(currentView==='ddl') renderDDL(c);
+  else if(currentView==='plan') renderPlanTabContent();
+  else if(currentView==='habit') renderHabit(c);
+  else if(currentView==='english') renderEnglish(c);
+  else if(currentView==='expense') renderExpense(c);
+  else if(currentView==='diary') renderDiary(c);
+  else switchView(currentView);
+}
+function editDDL(id){
+  const d=load('ddls',[]).find(x=>x.id===id); if(!d) return;
+  openEdit('编辑 DDL', [
+    {key:'title', label:'标题', value:d.title},
+    {key:'date', label:'日期', type:'date', value:d.date},
+    {key:'priority', label:'优先级', type:'select', value:d.priority||'mid', options:priOpts()}
+  ], v=>{
+    const title=v.title.trim(); if(!title||!v.date) return;
+    const ddls=load('ddls',[]); const item=ddls.find(x=>x.id===id); if(!item) return;
+    item.title=title; item.date=v.date; item.priority=v.priority;
+    save('ddls', ddls); refreshAfterEdit();
+  });
 }
 
 // ============ PROJECTS ============
@@ -1777,22 +1844,47 @@ function getWeekStart(s){ const d=new Date(s+'T00:00:00'); const day=d.getDay()=
 function renderMonthPlan(el){
   const now=new Date(); const ym=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const goals=load('monthPlans',{}); const mg=goals[ym]||[]; const done=mg.filter(g=>g.done).length;
-  el.innerHTML=`<div class="card"><div class="card-title">${now.getFullYear()}年${now.getMonth()+1}月 月度目标</div><div class="form-row"><input id="month-goal" placeholder="本月目标（如：完成论文第三章）" onkeydown="if(event.key==='Enter')addMonthGoal('${ym}')" style="min-width:200px"><select id="month-priority" style="max-width:100px"><option value="high">高</option><option value="mid" selected>中</option><option value="low">低</option></select><button class="btn btn-primary" onclick="addMonthGoal('${ym}')">添加</button></div>${mg.length?`<div class="progress"><div class="progress-bar" style="width:${Math.round(done/mg.length*100)}%"></div></div><div style="font-size:12px;color:var(--muted);margin-bottom:8px">${done}/${mg.length} 完成</div>${mg.map(g=>`<div class="list-item ${g.done?'done':''}"><div class="cb ${g.done?'checked':''}" onclick="toggleMonthGoal('${ym}','${g.id}')"></div><div class="text">${esc(g.title)} ${pBadge(g.priority)}</div><button class="btn btn-sm btn-danger" onclick="delMonthGoal('${ym}','${g.id}')">删除</button></div>`).join('')}`:'<div class="empty">本月还没有目标，添加一个吧</div>'}</div>`;
+  el.innerHTML=`<div class="card"><div class="card-title">${now.getFullYear()}年${now.getMonth()+1}月 月度目标</div><div class="form-row"><input id="month-goal" placeholder="本月目标（如：完成论文第三章）" onkeydown="if(event.key==='Enter')addMonthGoal('${ym}')" style="min-width:200px"><select id="month-priority" style="max-width:100px"><option value="high">高</option><option value="mid" selected>中</option><option value="low">低</option></select><button class="btn btn-primary" onclick="addMonthGoal('${ym}')">添加</button></div>${mg.length?`<div class="progress"><div class="progress-bar" style="width:${Math.round(done/mg.length*100)}%"></div></div><div style="font-size:12px;color:var(--muted);margin-bottom:8px">${done}/${mg.length} 完成</div>${mg.map(g=>`<div class="list-item ${g.done?'done':''}"><div class="cb ${g.done?'checked':''}" onclick="toggleMonthGoal('${ym}','${g.id}')"></div><div class="text edit-hit" onclick="editMonthGoal('${ym}','${g.id}')">${esc(g.title)} ${pBadge(g.priority)}</div><button class="btn btn-sm btn-danger" onclick="delMonthGoal('${ym}','${g.id}')">删除</button></div>`).join('')}`:'<div class="empty">本月还没有目标，添加一个吧</div>'}</div>`;
 }
 function addMonthGoal(ym){ const title=document.getElementById('month-goal').value.trim(); if(!title) return; const goals=load('monthPlans',{}); if(!goals[ym]) goals[ym]=[]; goals[ym].push({id:uid(),title,priority:document.getElementById('month-priority').value,done:false}); save('monthPlans',goals); renderPlanTabContent(); }
 function toggleMonthGoal(ym,id){ const goals=load('monthPlans',{}); const g=(goals[ym]||[]).find(x=>x.id===id); if(g) g.done=!g.done; save('monthPlans',goals); renderPlanTabContent(); }
 function delMonthGoal(ym,id){ const goals=load('monthPlans',{}); goals[ym]=(goals[ym]||[]).filter(x=>x.id!==id); save('monthPlans',goals); renderPlanTabContent(); }
+function editMonthGoal(ym,id){
+  const g=(load('monthPlans',{})[ym]||[]).find(x=>x.id===id); if(!g) return;
+  openEdit('编辑月目标', [
+    {key:'title', label:'目标', value:g.title},
+    {key:'priority', label:'优先级', type:'select', value:g.priority||'mid', options:priOpts()}
+  ], v=>{
+    const title=v.title.trim(); if(!title) return;
+    const goals=load('monthPlans',{}); const item=(goals[ym]||[]).find(x=>x.id===id); if(!item) return;
+    item.title=title; item.priority=v.priority; save('monthPlans',goals); renderPlanTabContent();
+  });
+}
 
 function renderWeekPlan(el){
   if(!currentWeekStart) currentWeekStart=getWeekStart(todayStr());
   const wp=load('weekPlans',{}); const tasks=wp[currentWeekStart]||[]; const done=tasks.filter(t=>t.done).length;
   const dn=['周一','周二','周三','周四','周五','周六','周日'];
-  el.innerHTML=`<div class="card"><div class="card-title"><span>本周计划 (${fmtDate(currentWeekStart)} ~ ${fmtDate(addDays(currentWeekStart,6))})</span><div class="actions"><button class="btn btn-sm" onclick="changeWeek(-1)">上一周</button><button class="btn btn-sm" onclick="changeWeek(0)">本周</button><button class="btn btn-sm" onclick="changeWeek(1)">下一周</button></div></div><div class="form-row"><input id="week-title" placeholder="本周任务" onkeydown="if(event.key==='Enter')addWeekTask()" style="min-width:200px"><select id="week-day" style="max-width:100px">${dn.map((n,i)=>`<option value="${i}">${n}</option>`).join('')}</select><select id="week-priority" style="max-width:100px"><option value="high">高</option><option value="mid" selected>中</option><option value="low">低</option></select><button class="btn btn-primary" onclick="addWeekTask()">添加</button></div><div style="font-size:12px;color:var(--muted);margin-bottom:8px">选择任务对应星期几，点击"映射到日计划"可直接复制到当天日计划。</div>${tasks.length?`<div class="progress"><div class="progress-bar" style="width:${Math.round(done/tasks.length*100)}%"></div></div><div style="font-size:12px;color:var(--muted);margin-bottom:8px">${done}/${tasks.length} 完成</div>${tasks.map(t=>`<div class="list-item ${t.done?'done':''}"><div class="cb ${t.done?'checked':''}" onclick="toggleWeekTask('${t.id}')"></div><div class="text">${esc(t.title)} <span class="badge badge-info">${dn[t.day]||'未分配'}</span> ${pBadge(t.priority)} ${t.mapped?'<span class="badge badge-low">已映射</span>':''}</div><button class="btn btn-sm" onclick="mapWeekToDay('${t.id}')">${t.mapped?'重新映射':'映射到日计划'}</button><button class="btn btn-sm btn-danger" onclick="delWeekTask('${t.id}')">删除</button></div>`).join('')}`:'<div class="empty">本周还没有计划，添加第一个任务吧</div>'}</div>`;
+  el.innerHTML=`<div class="card"><div class="card-title"><span>本周计划 (${fmtDate(currentWeekStart)} ~ ${fmtDate(addDays(currentWeekStart,6))})</span><div class="actions"><button class="btn btn-sm" onclick="changeWeek(-1)">上一周</button><button class="btn btn-sm" onclick="changeWeek(0)">本周</button><button class="btn btn-sm" onclick="changeWeek(1)">下一周</button></div></div><div class="form-row"><input id="week-title" placeholder="本周任务" onkeydown="if(event.key==='Enter')addWeekTask()" style="min-width:200px"><select id="week-day" style="max-width:100px">${dn.map((n,i)=>`<option value="${i}">${n}</option>`).join('')}</select><select id="week-priority" style="max-width:100px"><option value="high">高</option><option value="mid" selected>中</option><option value="low">低</option></select><button class="btn btn-primary" onclick="addWeekTask()">添加</button></div><div style="font-size:12px;color:var(--muted);margin-bottom:8px">选择任务对应星期几，点击"映射到日计划"可直接复制到当天日计划。</div>${tasks.length?`<div class="progress"><div class="progress-bar" style="width:${Math.round(done/tasks.length*100)}%"></div></div><div style="font-size:12px;color:var(--muted);margin-bottom:8px">${done}/${tasks.length} 完成</div>${tasks.map(t=>`<div class="list-item ${t.done?'done':''}"><div class="cb ${t.done?'checked':''}" onclick="toggleWeekTask('${t.id}')"></div><div class="text edit-hit" onclick="editWeekTask('${t.id}')">${esc(t.title)} <span class="badge badge-info">${dn[t.day]||'未分配'}</span> ${pBadge(t.priority)} ${t.mapped?'<span class="badge badge-low">已映射</span>':''}</div><button class="btn btn-sm" onclick="mapWeekToDay('${t.id}')">${t.mapped?'重新映射':'映射到日计划'}</button><button class="btn btn-sm btn-danger" onclick="delWeekTask('${t.id}')">删除</button></div>`).join('')}`:'<div class="empty">本周还没有计划，添加第一个任务吧</div>'}</div>`;
 }
 function changeWeek(dir){ if(dir===0) currentWeekStart=getWeekStart(todayStr()); else currentWeekStart=addDays(currentWeekStart,dir*7); renderPlanTabContent(); }
 function addWeekTask(){ const title=document.getElementById('week-title').value.trim(); if(!title) return; const day=parseInt(document.getElementById('week-day').value); const priority=document.getElementById('week-priority').value; const wp=load('weekPlans',{}); if(!wp[currentWeekStart]) wp[currentWeekStart]=[]; wp[currentWeekStart].push({id:uid(),title,day,priority,done:false,mapped:false}); save('weekPlans',wp); renderPlanTabContent(); }
 function toggleWeekTask(id){ const wp=load('weekPlans',{}); const t=(wp[currentWeekStart]||[]).find(x=>x.id===id); if(t) t.done=!t.done; save('weekPlans',wp); renderPlanTabContent(); }
 function delWeekTask(id){ const wp=load('weekPlans',{}); wp[currentWeekStart]=(wp[currentWeekStart]||[]).filter(x=>x.id!==id); save('weekPlans',wp); renderPlanTabContent(); }
+function editWeekTask(id){
+  const t=(load('weekPlans',{})[currentWeekStart]||[]).find(x=>x.id===id); if(!t) return;
+  const days=['周一','周二','周三','周四','周五','周六','周日'].map((label,value)=>({value:String(value),label}));
+  openEdit('编辑周计划', [
+    {key:'title', label:'任务', value:t.title},
+    {key:'day', label:'星期', type:'select', value:String(t.day||0), options:days},
+    {key:'priority', label:'优先级', type:'select', value:t.priority||'mid', options:priOpts()}
+  ], v=>{
+    const title=v.title.trim(); if(!title) return;
+    const wp=load('weekPlans',{}); const item=(wp[currentWeekStart]||[]).find(x=>x.id===id); if(!item) return;
+    item.title=title; item.day=parseInt(v.day,10)||0; item.priority=v.priority;
+    save('weekPlans',wp); renderPlanTabContent();
+  });
+}
 function mapWeekToDay(id){ const wp=load('weekPlans',{}); const t=(wp[currentWeekStart]||[]).find(x=>x.id===id); if(!t) return; const targetDate=addDays(currentWeekStart,t.day); const plans=load('plans',{}); if(!plans[targetDate]) plans[targetDate]=[]; if(t.mapped&&t.mappedId){ for(const d in plans){ plans[d]=plans[d].filter(x=>x.id!==t.mappedId); } } const nid=uid(); plans[targetDate].push({id:nid,title:t.title,time:'',priority:t.priority,done:false,fromWeek:true}); save('plans',plans); t.mapped=true; t.mappedId=nid; save('weekPlans',wp); renderPlanTabContent(); }
 
 function renderDayPlan(el){
@@ -1820,7 +1912,7 @@ function renderDayPlan(el){
       ${tasks.length?`
         <div class="progress"><div class="progress-bar" style="width:${Math.round(done/tasks.length*100)}%"></div></div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${done}/${tasks.length} 完成 (${Math.round(done/tasks.length*100)}%)</div>
-        ${tasks.map(t=>`<div class="list-item ${t.done?'done':''}"><div class="cb ${t.done?'checked':''}" onclick="togglePlan('${t.id}')"></div><div class="text">${esc(t.title)} ${t.time?`<span class="meta">· ${t.time}</span>`:''} ${pBadge(t.priority)} ${t.fromWeek?'<span class="badge badge-info">来自周计划</span>':''}</div><button class="btn btn-sm btn-danger" onclick="delPlan('${t.id}')">删除</button></div>`).join('')}
+        ${tasks.map(t=>`<div class="list-item ${t.done?'done':''}"><div class="cb ${t.done?'checked':''}" onclick="togglePlan('${t.id}')"></div><div class="text edit-hit" onclick="editDayPlan('${currentPlanDate}','${t.id}')">${esc(t.title)} ${t.time?`<span class="meta">· ${t.time}</span>`:''} ${pBadge(t.priority)} ${t.fromWeek?'<span class="badge badge-info">来自周计划</span>':''}</div><button class="btn btn-sm btn-danger" onclick="delPlan('${t.id}')">删除</button></div>`).join('')}
       `:'<div class="empty">这一天还没有计划，添加第一个任务吧</div>'}
     </div>
   `;
@@ -1829,6 +1921,19 @@ function changePlanDate(dir){ if(dir===0) currentPlanDate=todayStr(); else curre
 function addPlanTask(){ const title=document.getElementById('plan-title').value.trim(); if(!title) return; const time=document.getElementById('plan-time').value; const priority=document.getElementById('plan-priority').value; const plans=load('plans',{}); if(!plans[currentPlanDate]) plans[currentPlanDate]=[]; plans[currentPlanDate].push({id:uid(),title,time,priority,done:false}); save('plans',plans); renderPlanTabContent(); }
 function togglePlan(id){ const plans=load('plans',{}); const t=(plans[currentPlanDate]||[]).find(x=>x.id===id); if(t) t.done=!t.done; save('plans',plans); renderPlanTabContent(); }
 function delPlan(id){ const plans=load('plans',{}); plans[currentPlanDate]=(plans[currentPlanDate]||[]).filter(x=>x.id!==id); save('plans',plans); renderPlanTabContent(); }
+function editDayPlan(date,id){
+  const t=(load('plans',{})[date]||[]).find(x=>x.id===id); if(!t) return;
+  openEdit('编辑计划', [
+    {key:'title', label:'任务', value:t.title},
+    {key:'time', label:'时间', type:'time', value:t.time||''},
+    {key:'priority', label:'优先级', type:'select', value:t.priority||'mid', options:priOpts()}
+  ], v=>{
+    const title=v.title.trim(); if(!title) return;
+    const plans=load('plans',{}); const item=(plans[date]||[]).find(x=>x.id===id); if(!item) return;
+    item.title=title; item.time=v.time; item.priority=v.priority;
+    save('plans',plans); refreshAfterEdit();
+  });
+}
 
 // ============ HABIT ============
 function renderHabit(c){
@@ -1853,7 +1958,7 @@ function renderHabit(c){
           const isToday=d===t;
           return `<div class="habit-dot ${isDone?'done':''} ${isToday?'today':''}" title="${d}">${isDone?'\\u2713':parseInt(d.split('-')[2])}</div>`;
         }).join('');
-        return `<div class="habit-card"><div class="top"><span class="name">${esc(h.name)}</span><span class="streak">${streak} 天连击</span></div><div class="habit-dots">${last7}</div><div style="display:flex;gap:8px"><button class="btn btn-sm ${done?'':'btn-primary'}" onclick="toggleHabit('${h.id}')">${done?'今日已打卡':'今日打卡'}</button><button class="btn btn-sm btn-danger" onclick="delHabit('${h.id}')">删除</button></div></div>`;
+        return `<div class="habit-card"><div class="top"><span class="name edit-hit" onclick="editHabit('${h.id}')">${esc(h.name)}</span><span class="streak">${streak} 天连击</span></div><div class="habit-dots">${last7}</div><div style="display:flex;gap:8px"><button class="btn btn-sm ${done?'':'btn-primary'}" onclick="toggleHabit('${h.id}')">${done?'今日已打卡':'今日打卡'}</button><button class="btn btn-sm btn-danger" onclick="delHabit('${h.id}')">删除</button></div></div>`;
       }).join('') : '<div class="empty" style="grid-column:1/-1">还没有打卡项，添加你的第一个习惯吧</div>'}
     </div>
   `;
@@ -1884,6 +1989,14 @@ function delHabit(id){
   save('habits',habits);
   renderHabit(document.getElementById('content'));
 }
+function editHabit(id){
+  const h=load('habits',[]).find(x=>x.id===id); if(!h) return;
+  openEdit('编辑打卡项', [{key:'name', label:'名称', value:h.name}], v=>{
+    const name=v.name.trim(); if(!name) return;
+    const habits=load('habits',[]); const item=habits.find(x=>x.id===id); if(!item) return;
+    item.name=name; save('habits',habits); refreshAfterEdit();
+  });
+}
 
 // ============ ENGLISH ============
 function renderEnglish(c){
@@ -1909,7 +2022,7 @@ function renderEnglish(c){
     </div>
     <div class="card">
       <div class="card-title">学习记录</div>
-      ${log.length? log.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`<div class="list-item"><span class="badge badge-info">${e.type}</span><div class="text">${esc(e.content)}</div><div class="meta">${fmtDate(e.date)} · ${e.duration}min</div><button class="btn btn-sm btn-danger" onclick="delEnglish('${e.id}')">删除</button></div>`).join('') : '<div class="empty">还没有学习记录</div>'}
+      ${log.length? log.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`<div class="list-item"><span class="badge badge-info">${e.type}</span><div class="text edit-hit" onclick="editEnglish('${e.id}')">${esc(e.content)}</div><div class="meta">${fmtDate(e.date)} · ${e.duration}min</div><button class="btn btn-sm btn-danger" onclick="delEnglish('${e.id}')">删除</button></div>`).join('') : '<div class="empty">还没有学习记录</div>'}
     </div>
   `;
 }
@@ -1929,6 +2042,21 @@ function delEnglish(id){
   const log=load('english',[]).filter(x=>x.id!==id);
   save('english',log);
   renderEnglish(document.getElementById('content'));
+}
+function editEnglish(id){
+  const e=load('english',[]).find(x=>x.id===id); if(!e) return;
+  const types=['单词','阅读','听力','写作','口语','其他'].map(t=>({value:t,label:t}));
+  openEdit('编辑学习记录', [
+    {key:'type', label:'类型', type:'select', value:e.type, options:types},
+    {key:'content', label:'内容', value:e.content},
+    {key:'duration', label:'分钟', type:'number', value:e.duration||0},
+    {key:'date', label:'日期', type:'date', value:e.date}
+  ], v=>{
+    const content=v.content.trim(); if(!content) return;
+    const log=load('english',[]); const item=log.find(x=>x.id===id); if(!item) return;
+    item.type=v.type; item.content=content; item.duration=parseInt(v.duration,10)||0; item.date=v.date||item.date;
+    save('english',log); renderEnglish(document.getElementById('content'));
+  });
 }
 
 // ============ TRAVEL ============
@@ -2053,7 +2181,7 @@ function renderRecipeList(){
   const recipes=load('recipes',[]);
   el.innerHTML=recipes.length? recipes.map(r=>`
     <div class="recipe-card">
-      <div class="rname">${esc(r.name)}</div>
+      <div class="rname edit-hit" onclick="editRecipe('${r.id}')">${esc(r.name)}</div>
       ${r.link?`<a class="rlink" href="${esc(r.link)}" target="_blank">查看原帖</a>`:''}
       <button class="xhs-btn" onclick="searchXHSKeyword('${esc(r.name)}')">再搜</button>
       <button class="btn btn-sm btn-danger" onclick="delRecipe('${r.id}')">删除</button>
@@ -2077,6 +2205,17 @@ function delRecipe(id){
   const recipes=load('recipes',[]).filter(x=>x.id!==id);
   save('recipes',recipes);
   renderRecipeList();
+}
+function editRecipe(id){
+  const r=load('recipes',[]).find(x=>x.id===id); if(!r) return;
+  openEdit('编辑食谱', [
+    {key:'name', label:'名称', value:r.name},
+    {key:'link', label:'链接', value:r.link||''}
+  ], v=>{
+    const name=v.name.trim(); if(!name) return;
+    const recipes=load('recipes',[]); const item=recipes.find(x=>x.id===id); if(!item) return;
+    item.name=name; item.link=v.link.trim(); save('recipes',recipes); renderRecipeList();
+  });
 }
 
 function searchXHS(){
@@ -2127,7 +2266,7 @@ function renderPaperList(papers,filter){
   const sBadge={'未读':'badge-low','在读':'badge-mid','已读':'badge-info'};
   list.innerHTML=filtered.length? filtered.map(p=>`
     <div class="paper-card">
-      <div class="title">${esc(p.title)}</div>
+      <div class="title edit-hit" onclick="editPaper('${p.id}')">${esc(p.title)}</div>
       <div class="info">${esc(p.authors||'')} ${p.publishedDate?'· '+fmtDate(p.publishedDate):''} ${p.tags&&p.tags.length?'· '+p.tags.map(t=>'#'+esc(t)).join(' '):''}</div>
       <div style="display:flex;gap:8px;align-items:center">
         <span class="badge ${sBadge[p.status]||'badge-info'}">${p.status}</span>
@@ -2204,6 +2343,19 @@ function editPaperNote(id){
   const note=prompt('论文笔记',p.notes||'');
   if(note!==null){ p.notes=note; save('papers',papers); renderPaperList(load('papers',[]),paperFilter); }
 }
+function editPaper(id){
+  const p=load('papers',[]).find(x=>x.id===id); if(!p) return;
+  openEdit('编辑论文', [
+    {key:'title', label:'标题', value:p.title},
+    {key:'authors', label:'作者', value:p.authors||''},
+    {key:'publishedDate', label:'日期', type:'date', value:p.publishedDate||''}
+  ], v=>{
+    const title=v.title.trim(); if(!title) return;
+    const papers=load('papers',[]); const item=papers.find(x=>x.id===id); if(!item) return;
+    item.title=title; item.authors=v.authors.trim(); item.publishedDate=v.publishedDate;
+    save('papers',papers); renderPaperList(load('papers',[]),paperFilter);
+  });
+}
 
 function delPaper(id){
   const papers=load('papers',[]).filter(x=>x.id!==id);
@@ -2270,7 +2422,7 @@ function renderExpense(c){
     </div>
     <div class="card">
       <div class="card-title">支出明细</div>
-      ${expenses.length? expenses.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30).map(e=>`<div class="list-item"><span class="badge badge-info">${e.category}</span><div class="text">${esc(e.note||'')}</div><div class="meta">¥${e.amount} · ${fmtDate(e.date)}</div><button class="btn btn-sm btn-danger" onclick="delExpense('${e.id}')">删除</button></div>`).join('') : '<div class="empty">还没有记账记录</div>'}
+      ${expenses.length? expenses.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30).map(e=>`<div class="list-item"><span class="badge badge-info">${e.category}</span><div class="text edit-hit" onclick="editExpense('${e.id}')">${esc(e.note||'未备注')}</div><div class="meta">¥${e.amount} · ${fmtDate(e.date)}</div><button class="btn btn-sm btn-danger" onclick="delExpense('${e.id}')">删除</button></div>`).join('') : '<div class="empty">还没有记账记录</div>'}
     </div>
   `;
 
@@ -2290,6 +2442,21 @@ function delExpense(id){
   const expenses=load('expenses',[]).filter(x=>x.id!==id);
   save('expenses',expenses);
   renderExpense(document.getElementById('content'));
+}
+function editExpense(id){
+  const e=load('expenses',[]).find(x=>x.id===id); if(!e) return;
+  const cats=['餐饮','交通','购物','学习','娱乐','住房','医疗','其他'].map(c=>({value:c,label:c}));
+  openEdit('编辑支出', [
+    {key:'amount', label:'金额', type:'number', value:e.amount},
+    {key:'category', label:'分类', type:'select', value:e.category, options:cats},
+    {key:'note', label:'备注', value:e.note||''},
+    {key:'date', label:'日期', type:'date', value:e.date}
+  ], v=>{
+    const amount=parseFloat(v.amount); if(!amount) return;
+    const expenses=load('expenses',[]); const item=expenses.find(x=>x.id===id); if(!item) return;
+    item.amount=amount; item.category=v.category; item.note=v.note.trim(); item.date=v.date||item.date;
+    save('expenses',expenses); renderExpense(document.getElementById('content'));
+  });
 }
 
 // ============ DIARY ============
@@ -2312,7 +2479,7 @@ function renderDiary(c){
     </div>
     <div class="card">
       <div class="card-title">日记历史</div>
-      ${diary.length? diary.sort((a,b)=>b.date.localeCompare(a.date)).map(d=>`<div class="list-item" style="align-items:flex-start"><div style="font-size:20px">${d.mood||''}</div><div class="text"><div style="font-weight:500">${fmtDate(d.date)}</div><div style="font-size:13px;color:var(--muted);margin-top:2px;white-space:pre-wrap">${esc(d.content)}</div></div><button class="btn btn-sm btn-danger" onclick="delDiary('${d.id}')">删除</button></div>`).join('') : '<div class="empty">还没有写过日记</div>'}
+      ${diary.length? diary.sort((a,b)=>b.date.localeCompare(a.date)).map(d=>`<div class="list-item" style="align-items:flex-start"><div style="font-size:20px">${d.mood||''}</div><div class="text edit-hit" onclick="editDiary('${d.id}')"><div style="font-weight:500">${fmtDate(d.date)}</div><div style="font-size:13px;color:var(--muted);margin-top:2px;white-space:pre-wrap">${esc(d.content)}</div></div><button class="btn btn-sm btn-danger" onclick="delDiary('${d.id}')">删除</button></div>`).join('') : '<div class="empty">还没有写过日记</div>'}
     </div>
   `;
   if(today) window._selectedMood=today.mood; else window._selectedMood=null;
@@ -2339,6 +2506,20 @@ function delDiary(id){
   const diary=load('diary',[]).filter(x=>x.id!==id);
   save('diary',diary);
   renderDiary(document.getElementById('content'));
+}
+function editDiary(id){
+  const d=load('diary',[]).find(x=>x.id===id); if(!d) return;
+  const moods=['😄','🙂','😌','😐','😢','😠','🤭','😟'];
+  const labels=['开心','不错','平静','一般','难过','生气','害羞','低落'];
+  openEdit('编辑日记', [
+    {key:'mood', label:'心情', type:'select', value:d.mood||moods[0], options:moods.map((m,i)=>({value:m,label:m+' '+labels[i]}))},
+    {key:'content', label:'内容', type:'textarea', value:d.content||''},
+    {key:'date', label:'日期', type:'date', value:d.date}
+  ], v=>{
+    const diary=load('diary',[]); const item=diary.find(x=>x.id===id); if(!item) return;
+    item.mood=v.mood; item.content=v.content; item.date=v.date||item.date;
+    save('diary',diary); renderDiary(document.getElementById('content'));
+  });
 }
 
 // ============ HELPERS ============
